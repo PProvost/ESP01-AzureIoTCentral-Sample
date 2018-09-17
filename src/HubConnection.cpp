@@ -141,7 +141,7 @@ bool HubConnection::registerConnectionStatusCallback(ConnectionStatusCallbackFun
 
 void HubConnection::internalConnectionStatusCallback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void *context)
 {
-    Log.trace("Connection Status Received: %s - %s", ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
+    Log.trace("Connection Status Received: %s - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
     HubConnection *hubConnection = static_cast<HubConnection *>(context);
     if (hubConnection->_connectionStatusCallback)
         hubConnection->_connectionStatusCallback(result, reason);
@@ -195,20 +195,29 @@ void HubConnection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE u
     StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
     JsonObject& root = jsonBuffer.parseObject(payLoad);
 
-    if (root["properties"]["desired"])
+    char buffer[1024];
+    root.prettyPrintTo(buffer);
+    Log.trace("Desired Prop:\r\n%s" CR, buffer);
+
+    if (root["desired"])
     {
-        const JsonObject& desired = root["properties"]["desired"];
+        const JsonObject& desired = root["desired"];
         for (const auto& kv : desired)
         {
             auto key = kv.key;
-            auto val = kv.value.asString();
+            // auto val = kv.value.as<char*>();
+            auto val = kv.value["value"].as<char*>();
+            Log.trace("\tKey/Val: %s/%s" CR, key, val);
             auto& map = hubConnection->_desiredPropCallbackMap;
             if (map.find(key) != map.end())
             {
+                Log.trace("\tFOUND!" CR);
                 DesiredPropertyCallbackFunctionType f = map[key].first;
                 void* userContext = map[key].second;
                 f(key, val, userContext);                
             }
+            else
+                Log.trace("\tNOT Found!" CR);
         }
     }    
 }

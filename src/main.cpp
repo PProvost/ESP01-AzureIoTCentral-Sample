@@ -43,7 +43,7 @@ const double minPressure = 80.0;
 // Globals
 StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
 SimpleTimer timer;
-static bool loopActive = true;
+static bool loopActive = false;
 static char iotConnStr[CONN_STR_MAX_LEN];
 bool shouldSaveConfig = false;
 
@@ -208,12 +208,11 @@ void setup()
 
     if (!hubConnection.setup(iotConnStr))
     {
-        loopActive = false;
         return;
     }
 
     auto rebootCallback = [](std::string name, void *context) -> std::string {
-        Log.notice("Device method \"reboot\" called.");
+        Log.notice("Device method \"reboot\" called." CR);
 
         // Note: IoT Central expects the return payload to be valid JSON
         return "{}";
@@ -227,7 +226,7 @@ void setup()
     }
 
     auto connectionStatusCallback = [](IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason) {
-        Log.notice("Connection status callback: %s - %s", ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
+        Log.notice("Connection status callback: %s - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
     };
 
     Log.notice("== Enabling Connection Status Callback ==" CR);
@@ -239,14 +238,14 @@ void setup()
 
     Log.notice("== Enabling Device Twin Callback ==" CR);
     if (hubConnection.registerDesiredPropertyCallback("fan-speed", [](std::string name, std::string val, void* context){
-        Log.notice("Desired property 'fan-speed' updated: %s", val.c_str());
-    }))
+        Log.notice("Desired property 'fan-speed' updated: %s" CR, val.c_str());
+    }) == false)
     {
         Log.error("hubConnection.registerDesiredPropertyCallback FAILED!" CR);
         return;
     }
 
-    Log.notice("== Enabling Reported Property (SSID) every 5 min ==");
+    Log.notice("== Enabling Reported Property (SSID) every 5 min ==" CR);
     timer.setInterval(5 * 60 * 1000, SendReportedProperty_SSID); // Every 5 mins
 
     Log.notice("== Enabling Telemetry every 5 sec ==" CR);
@@ -257,8 +256,9 @@ void setup()
     timer.setInterval(10 * 1000, DumpFreeHeap); // Every 10 seconds
 #endif
 
-    Log.trace("setup() complete" CR);
-    Log.trace("loopActive=%T" CR, loopActive);
+    // If we got here, activate the loop()
+    loopActive = true;
+    Log.trace("setup() completes successfully" CR);
 }
 
 void loop()
