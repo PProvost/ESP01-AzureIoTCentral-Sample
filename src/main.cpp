@@ -3,6 +3,7 @@
 #include <FS.h>
 #include <Time.h>
 
+/*
 #include <sdk/iothub_client.h>
 #include <sdk/iothub_message.h>
 #include <azure_c_shared_utility/platform.h>
@@ -11,6 +12,7 @@
 #include <sdk/iothubtransportmqtt.h>
 #include <sdk/iothub_client_options.h>
 #include <AzureIoTProtocol_MQTT.h>
+*/
 
 #include <SimpleTimer.h>      // Lightweight scheduling of tasks
 #include <ArduinoJson.h>      // JSON Parsing for Arduino
@@ -22,6 +24,7 @@
 // #define DISABLE_LOGGING
 #include <ArduinoLog.h>
 
+#include "HubConnection.h"
 #include "config.h"
 
 // Times before 2010 (1970 + 40 years) are invalid
@@ -31,7 +34,7 @@
 #define MESSAGE_MAX_LEN 1024
 
 // Max length of Connection String
-#define CONN_STR_MAX_LEN    512
+#define CONN_STR_MAX_LEN 512
 
 // Used for random simluated telemetry values
 const double minTemperature = -20.0;
@@ -40,19 +43,20 @@ const double minPressure = 80.0;
 // Globals
 StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
 SimpleTimer timer;
-static char msgText[MESSAGE_MAX_LEN];
-static IOTHUB_CLIENT_LL_HANDLE iotHubClientHandle = NULL;
-static IOTHUB_MESSAGE_HANDLE messageHandle = NULL;
 static bool loopActive = true;
-static time_t lastTokenTime;
 static char iotConnStr[CONN_STR_MAX_LEN];
 bool shouldSaveConfig = false;
 
+// Objectify
+HubConnection hubConnection;
+
 void InitSerial()
 {
+    delay(1000);
     // Start serial and initialize stdout
     Serial.begin(115200);
     Serial.setDebugOutput(true);
+    delay(1000); // Wait for serial
 }
 
 void InitWifi()
@@ -60,6 +64,14 @@ void InitWifi()
     if (SPIFFS.begin())
     {
         Log.trace("Mounted file system" CR);
+
+        Dir dir = SPIFFS.openDir("/");
+        Serial.println("**SPIFFS Dir");
+        while (dir.next())
+        {
+            Serial.println(dir.fileName());
+        }
+
         if (SPIFFS.exists("/connstr.txt"))
         {
             //file exists, reading and loading
@@ -117,10 +129,18 @@ void InitWifi()
         else
         {
             Log.trace("Writing config file" CR);
-            connstrFile.write((uint8_t *)iotConnStr, 256);
+            connstrFile.write((uint8_t *)iotConnStr, CONN_STR_MAX_LEN);
+            connstrFile.print(iotConnStr);
         }
 
         connstrFile.close();
+
+        Dir dir = SPIFFS.openDir("/");
+        Serial.println("**SPIFFS Dir");
+        while (dir.next())
+        {
+            Serial.println(dir.fileName());
+        }
     }
 }
 
@@ -150,139 +170,24 @@ void InitTime()
     }
 }
 
-void ConnectionStatusCallback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void *userContextCallback)
-{
-    Log.trace("**CONNECTION STATUS CALLBACK** - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
-}
-
-void DesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE update_state, const unsigned char *payLoad, size_t size, void *userContextCallback)
-{
-    Log.trace("**DESIRED PROP** - %d" CR, update_state);
-
-    // The following sample code shows how to parse the incoming twin change
-    // using the ArduinoJson library.
-    //
-    // See https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-device-twins#device-twins
-
-    /*
-    jsonBuffer.clear();
-    JsonObject &root = jsonBuffer.parseObject(payLoad);
-    if (!root.success())
-    {
-        Serial.printf("parseTwinMessage: Parse %s failed.\r\n", payLoad);
-        return;
-    }
-
-    if (root["desired"]["interval"].success())
-    {
-       sleepInterval = root["desired"]["interval"];
-    }
-    else if (root.containsKey("interval"))
-    {
-       sleepInterval = root["interval"];
-    }
-
-    // TODO: Send the reported property as acknowledgement
-
-    */
-}
-
-int DeviceDirectMethodCallback(const char *method_name, const unsigned char *payload, size_t size, unsigned char **response, size_t *response_size, void *userContextCallback)
-{
-    // NOTE: The malloc below seems like it should leak, but it doesn't because the IoT SDK will free the memory.
-    //       In my experimenting, a static buffer caused a runtime exception. Also, there is nothing in the docs
-    //       that indicates what the return value from this callback should be. I'm assuming that it is an HTTP
-    //       response code for now and returning 200.
-
-    Log.trace("**METHOD CALL** - %s" CR, method_name);
-    const char *resp = "{}"; // NOTE: For Central, the return response MUST be valid JSON.
-    *response_size = strlen(resp);
-    *response = (unsigned char *)malloc(*response_size);
-    (void)memcpy(*response, resp, *response_size);
-    return 200;
-}
-
-void TelemetryConfirmationCallback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void *userContextCallback)
-{
-    // You can use this for retry logic or anything else that would want to react to the success
-    // or failure of the message.
-    //
-    // IMPORTANT! You should clean up the allocated message once you've confirmed that it was sent successfully.
-
-    Log.trace("Telemetry Confirmation Receieved: %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_CONFIRMATION_RESULT, result));
-    if (result == IOTHUB_CLIENT_CONFIRMATION_OK && messageHandle != NULL)
-    {
-        IoTHubMessage_Destroy(messageHandle);
-        messageHandle = NULL;
-    }
-}
-
-void ReportedStateCallback(int status_code, void *userContextCallback)
-{
-    // You can use this for retry logic or anything else that would want to react to the success
-    // or failure of the message.
-}
-
 void SendTelemetry()
 {
     double temperature = minTemperature + (rand() % 10);
     double pressure = minPressure + (rand() % 20);
-    sprintf_s(msgText, sizeof(msgText), "{\"temp\":%.2f,\"pressure\":%.2f}", temperature, pressure);
-    if ((messageHandle = IoTHubMessage_CreateFromString(msgText)) == NULL)
-        Log.error("ERROR: iotHubMessageHandle is NULL!" CR);
-    else
-    {
-        if (IoTHubClient_LL_SendEventAsync(iotHubClientHandle, messageHandle, TelemetryConfirmationCallback, NULL) != IOTHUB_CLIENT_OK)
-            Log.error("ERROR: IoTHubClient_LL_SendEventAsync..........FAILED!" CR);
-        else
-            Log.trace("IoTHubClient_LL_SendEventAsync accepted message for transmission to IoT Hub." CR);
-    }
+
+    std::map<std::string, double> telemetryMap;
+    telemetryMap["temp"] = temperature;
+    telemetryMap["pressure"] = pressure;
+
+    hubConnection.sendMeasurements(telemetryMap);
 }
 
-void SendReportedProperty(const char *payload)
+void SendReportedProperty_SSID()
 {
-    IOTHUB_CLIENT_RESULT result = IoTHubClient_LL_SendReportedState(iotHubClientHandle,
-                                                                    (const unsigned char *)payload,
-                                                                    strlen(payload),
-                                                                    ReportedStateCallback, NULL);
-
-    if (result != IOTHUB_CLIENT_OK)
+    if (hubConnection.sendReportedProperty("wifi_ap_name", WiFi.SSID().c_str()) == false)
         Log.error("Failure sending reported property!!!" CR);
     else
-        Log.trace("IoTHubClient::sendReportedProperty COMPLETED" CR);
-}
-
-void SendAllReportedProperties()
-{
-    sprintf_s(msgText, sizeof(msgText), "{\"wifi_ap_name\":\"%s\"}", WiFi.SSID().c_str());
-    SendReportedProperty(msgText);
-}
-
-void CheckHubConnection(bool force = false)
-{
-    time_t current = time(NULL);
-
-    if (force || (current > lastTokenTime + 3000)) // force refresh after 50m (3000 sec)
-    {
-        IoTHubClient_LL_Destroy(iotHubClientHandle);
-
-        if ((iotHubClientHandle = IoTHubClient_LL_CreateFromConnectionString(iotConnStr, MQTT_Protocol)) == NULL)
-        {
-            Log.fatal("ERROR: iotHubClientHandle is NULL!" CR);
-            loopActive = false;
-            return;
-        }
-
-        lastTokenTime = current; //time(NULL);
-    }
-
-#ifdef SDK_LOG_TRACING
-    bool traceOn = true;
-    IoTHubClient_LL_SetOption(iotHubClientHandle, OPTION_LOG_TRACE, &traceOn);
-#endif
-
-    // If you want to change the SDK retry policy, uncomment the following line and set the parameters as you see fit
-    // IoTHubClient_LL_SetRetryPolicy(iotHubClientHandle, IOTHUB_CLIENT_RETRY_EXPONENTIAL_BACKOFF, 1200);
+        Log.trace("hubConnection.sendReportedProperty COMPLETED" CR);
 }
 
 #ifdef ENABLE_FREE_HEAP_LOGGING
@@ -301,40 +206,48 @@ void setup()
     InitWifi();
     InitTime();
 
-    if (platform_init() != 0)
+    if (!hubConnection.setup(iotConnStr))
     {
-        Log.fatal("Failed to initialize the platform." CR);
         loopActive = false;
         return;
     }
 
-    CheckHubConnection(true);
-    if (!loopActive)
-        return;
+    auto rebootCallback = [](std::string name, void *context) -> std::string {
+        Log.notice("Device method \"reboot\" called.");
+
+        // Note: IoT Central expects the return payload to be valid JSON
+        return "{}";
+    };
 
     Log.notice("== Enabling Device Method Callback ==" CR);
-    if (IoTHubClient_LL_SetDeviceMethodCallback(iotHubClientHandle, DeviceDirectMethodCallback, NULL) != IOTHUB_CLIENT_OK)
+    if (hubConnection.registerDeviceMethod("reboot", rebootCallback) == false)
     {
-        Log.error("IoTHubClient_LL_SetDeviceMethodCallback..........FAILED!" CR);
+        Log.error("Register device method FAILED!" CR);
+        return;
+    }
+
+    auto connectionStatusCallback = [](IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason) {
+        Log.notice("Connection status callback: %s - %s", ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
+    };
+
+    Log.notice("== Enabling Connection Status Callback ==" CR);
+    if (hubConnection.registerConnectionStatusCallback(connectionStatusCallback) == false)
+    {
+        Log.error("hubConnection.registerConnectionStatusCallback FAILED!" CR);
         return;
     }
 
     Log.notice("== Enabling Device Twin Callback ==" CR);
-    if (IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, DesiredPropertiesCallback, NULL) != IOTHUB_CLIENT_OK)
+    if (hubConnection.registerDesiredPropertyCallback("fan-speed", [](std::string name, std::string val, void* context){
+        Log.notice("Desired property 'fan-speed' updated: %s", val.c_str());
+    }))
     {
-        Log.error("IoTHubClient_LL_SetDeviceTwinCallback..........FAILED!" CR);
+        Log.error("hubConnection.registerDesiredPropertyCallback FAILED!" CR);
         return;
     }
 
-    Log.notice("== Enabling Connection Status Callback ==" CR);
-    if (IoTHubClient_LL_SetConnectionStatusCallback(iotHubClientHandle, ConnectionStatusCallback, NULL) != IOTHUB_CLIENT_OK)
-    {
-        Log.error("IoTHubClient_LL_SetConnectionStatusCallback..............FAILED!" CR);
-        return;
-    }
-
-    Log.notice("== Enabling Reported Properties every 5 min ==");
-    timer.setInterval(5 * 60 * 1000, SendAllReportedProperties); // Every 5 mins
+    Log.notice("== Enabling Reported Property (SSID) every 5 min ==");
+    timer.setInterval(5 * 60 * 1000, SendReportedProperty_SSID); // Every 5 mins
 
     Log.notice("== Enabling Telemetry every 5 sec ==" CR);
     timer.setInterval(5 * 1000, SendTelemetry);
@@ -352,9 +265,8 @@ void loop()
 {
     if (loopActive)
     {
-        CheckHubConnection();
         timer.run();
-        IoTHubClient_LL_DoWork(iotHubClientHandle);
+        hubConnection.loop();
         delay(100);
     }
 }

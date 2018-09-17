@@ -6,7 +6,7 @@
 
 // Use the following to control logging output channel & verbosity
 // See https://github.com/thijse/Arduino-Log/blob/master/README.md
-#define LOG_LEVEL   LOG_LEVEL_WARNING
+#define LOG_LEVEL   LOG_LEVEL_VERBOSE
 
 // Uncomment this to get periodic Free Heap dump through Log.notice()
 #define ENABLE_FREE_HEAP_LOGGING
