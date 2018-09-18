@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
 #include <Time.h>
 
 #include <SimpleTimer.h>      // Lightweight scheduling of tasks
@@ -12,9 +11,8 @@
 #include "Wifi.h"
 #include "config.h"
 
-// Times before 2010 (1970 + 40 years) are invalid
+// Epoch Time - Times before 2010 (1970 + 40 years) are invalid
 #define MIN_EPOCH 40 * 365 * 24 * 3600
-
 
 // Used for random simluated telemetry values
 const double minTemperature = -20.0;
