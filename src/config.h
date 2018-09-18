@@ -1,6 +1,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Max message size
+#define MESSAGE_MAX_LEN 1024
+
+// Max length of Connection String
+#define CONN_STR_MAX_LEN 512
+
 // Set to true to force WiFiManager to previously saved settings
 #define RESET_CONFIG    false
 
