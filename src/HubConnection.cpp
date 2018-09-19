@@ -84,37 +84,116 @@ void HubConnection::loop()
     IoTHubClient_LL_DoWork(this->_iotHubClientHandle);
 }
 
+bool HubConnection::sendTelemetry(const char* jsonPayload, time_t timestamp)
+{
+    IOTHUB_MESSAGE_HANDLE messageHandle = IoTHubMessage_CreateFromString(jsonPayload);
+    if (messageHandle == NULL)
+    {
+        Log.error("Failed to create message handle" CR);
+        return false;
+    }
+    Log.trace("Message handle created: %s" CR, jsonPayload);
+
+    IOTHUB_CLIENT_RESULT result = IoTHubClient_LL_SendEventAsync(this->_iotHubClientHandle, messageHandle, internalTelemetryConfirmationCallback, messageHandle);
+    if (result != IOTHUB_CLIENT_OK)
+    {
+        Log.error("ERROR: IoTHubClient_LL_SendEventAsync FAILED! - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_RESULT, result));
+        IoTHubMessage_Destroy(messageHandle);
+        return false;
+    }
+
+    Log.trace("IoTHubClient_LL_SendEventAsync accepted message for transmission to IoT Hub." CR);
+    return true;
+}
+
+bool HubConnection::sendStateChange(std::string key, std::string value, time_t timestamp)
+{
+    StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+
+    root[key.c_str()] = value.c_str();
+
+    char message[MAX_MESSAGE_SIZE];
+    root.printTo(message);
+
+    return this->sendTelemetry(message, timestamp);
+}
+
+bool HubConnection::sendEvent(std::string key, std::string value, time_t timestamp)
+{
+    StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+
+    root[key.c_str()] = value.c_str();
+
+    char message[MAX_MESSAGE_SIZE];
+    root.printTo(message);
+
+    return this->sendTelemetry(message, timestamp);
+}
+
+bool HubConnection::sendMeasurementJson(std::string key, std::string valueJson, time_t timestamp)
+{
+    StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+
+    root[key.c_str()] = RawJson(valueJson.c_str());
+
+    char message[MAX_MESSAGE_SIZE];
+    root.printTo(message);
+
+    return this->sendTelemetry(message, timestamp);
+}
+
+bool HubConnection::sendMeasurement(std::string key, double value, time_t timestamp)
+{
+    StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+
+    root[key.c_str()] = value;
+
+    char message[MAX_MESSAGE_SIZE];
+    root.printTo(message);
+
+    return this->sendTelemetry(message, timestamp);
+}
+
 bool HubConnection::sendMeasurements(std::map<std::string, double> inputMap, time_t timestamp)
 {
     StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
     JsonObject &root = jsonBuffer.createObject();
 
     for (auto const &element : inputMap)
-    {
         root.set(element.first.c_str(), element.second);
-    }
 
     char message[MAX_MESSAGE_SIZE];
     root.printTo(message);
 
-    IOTHUB_MESSAGE_HANDLE handle = IoTHubMessage_CreateFromString(message);
-    if (handle == NULL)
-    {
-        Log.error("Failed to create message handle" CR);
-        return false;
-    }
-    Log.trace("Message handle created: %s" CR, message);
+    return this->sendTelemetry(message, timestamp);
+}
 
-    IOTHUB_CLIENT_RESULT result = IoTHubClient_LL_SendEventAsync(this->_iotHubClientHandle, handle, internalTelemetryConfirmationCallback, handle);
+bool HubConnection::sendReportedPropertyJson(const std::string key, const std::string valueJson)
+{
+    StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+
+    root[key.c_str()] = RawJson(valueJson.c_str());
+
+    char message[MAX_MESSAGE_SIZE];
+    root.printTo(message);
+
+    auto result = this->internalSendReportedProperty(message, strlen(message));
+
     if (result != IOTHUB_CLIENT_OK)
     {
-        Log.error("ERROR: IoTHubClient_LL_SendEventAsync FAILED! - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_RESULT, result));
-        IoTHubMessage_Destroy(handle);
+        Log.error("Failure sending reported property!!!" CR);
         return false;
     }
-
-    Log.trace("IoTHubClient_LL_SendEventAsync accepted message for transmission to IoT Hub." CR);
-    return true;
+    else
+    {
+        Log.trace("IoTHubClient::sendReportedProperty COMPLETED" CR);
+        return true;
+    }
 }
 
 bool HubConnection::registerDeviceMethod(std::string methodName, MethodCallbackFunctionType callback, void *context)
@@ -260,11 +339,14 @@ void HubConnection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE u
         {
             "fan-speed": {
                 "value": { the value you landed on },
-                "statusCode": {http status code},
+                "statusCode": { http status code? },
                 "status": { "completed" | "pending" | "failed" },
-                "$version": { whatever you were given in the update }
+                "desiredVersion": { whatever you were given in the update }
             }
         }
+
+    Note that if you are pending, you should report what you're at now (when available), and later follow it up
+    with the final value when done.
     */
 
     Log.trace("**DESIRED PROP RECEIVED** (%s)" CR, ENUM_TO_STRING(DEVICE_TWIN_UPDATE_STATE, update_state));
@@ -284,31 +366,42 @@ void HubConnection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE u
         for (const auto &kv : it)
         {
             auto key = kv.key;
+
+            // bail out if it starts with a $ sign
+            if (key[0] == '$')
+                continue; 
+
             auto val = kv.value["value"].as<char *>();
-            Log.trace("Key/Val: %s/%s" CR, key, val);
             auto &map = hubConnection->_desiredPropCallbackMap;
-            if (map.find(key) != map.end())
+
+            StaticJsonBuffer<MAX_MESSAGE_SIZE> messageJson;
+            JsonObject &root = messageJson.createObject();
+            auto &propObj = root.createNestedObject(key);
+            propObj["value"] = val;
+            propObj["desiredVersion"] = version;
+
+            if (map.find(key) == map.end())
             {
+                Log.warning("Unregistered desired property received: %s: %s" CR, key, val);
+                propObj["statusCode"] = HTTP_CODE_NOT_IMPLEMENTED;
+                propObj["message"] = "Setting not supported on this device";
+                propObj["status"] = "failed";
+            }
+            else
+            {
+                Log.trace("Registered desired property received: %s: %s" CR, key, val);
                 DesiredPropertyCallbackFunctionType f = map[key].first;
                 void *userContext = map[key].second;
                 bool result = f(key, val, userContext);
-                if (result)
-                {
-                    StaticJsonBuffer<MAX_MESSAGE_SIZE> messageJson;
-                    JsonObject &root = messageJson.createObject();
 
-                    auto& propObj = root.createNestedObject(key);
-                    propObj["value"] = val;
-                    propObj["statusCode"] = (int) ((result == true) ? HTTP_CODE_OK : HTTP_CODE_NOT_MODIFIED);
-                    propObj["status"] = (const char*) ((result ==true) ? "completed" : "failed");
-                    propObj["$version"] = version;
-
-                    char buffer[MAX_MESSAGE_SIZE];
-                    root.printTo(buffer, MAX_MESSAGE_SIZE);
-                    int length = strlen(buffer);
-                    hubConnection->internalSendReportedProperty(buffer, length);
-                }
+                propObj["statusCode"] = (int)((result == true) ? HTTP_CODE_OK : HTTP_CODE_PARTIAL_CONTENT);
+                propObj["status"] = (const char *)((result == true) ? "completed" : "failed");
             }
+            
+            char buffer[MAX_MESSAGE_SIZE];
+            root.printTo(buffer, MAX_MESSAGE_SIZE);
+            int length = strlen(buffer);
+            hubConnection->internalSendReportedProperty(buffer, length);
         }
     };
 

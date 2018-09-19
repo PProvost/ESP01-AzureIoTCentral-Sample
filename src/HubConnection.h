@@ -26,19 +26,20 @@ class HubConnection
     bool setup(std::string connectionString);
     void loop();
 
-    bool sendMeasurements(std::map<std::string, double> inputMap, time_t timestamp = 0);
-    bool registerDeviceMethod(std::string methodName, MethodCallbackFunctionType callback, void *context = NULL);
+    bool sendMeasurement(const std::string key, double value, time_t timestamp=0);
+    bool sendMeasurements(const std::map<std::string, double> inputMap, time_t timestamp = 0);
+    bool sendMeasurementJson(const std::string key, const std::string valueJson, time_t timestamp=0);
+    bool sendEvent(const std::string key, const std::string value, time_t timestamp=0);
+    bool sendStateChange(std::string key, const std::string value, time_t timestamp=0);
+    bool sendTelemetry(const char* jsonPayload, time_t timestamp=0);
+
+    bool registerDeviceMethod(const std::string methodName, MethodCallbackFunctionType callback, void *context = NULL);
     bool registerConnectionStatusCallback(ConnectionStatusCallbackFunctionType func);
-    bool registerDesiredPropertyCallback(std::string propName, DesiredPropertyCallbackFunctionType callback, void* context=NULL);
+    bool registerDesiredPropertyCallback(const std::string propName, DesiredPropertyCallbackFunctionType callback, void* context=NULL);
 
     template <typename T> 
     bool sendReportedProperty(const std::string key, T value);
-
-
-    /*
-    bool SendEvent(std::string name, std::string value, time_t timestamp=0);
-    bool SendStateTransition(std::string name, std::string value, time_t timestamp=0);
-    */
+    bool sendReportedPropertyJson(const std::string key, const std::string valueJson);
 
     // For backward compatibility if you want to use direct SDK "LL" functions
     IOTHUB_CLIENT_LL_HANDLE getHubClientHandle();
