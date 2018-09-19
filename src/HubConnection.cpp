@@ -299,8 +299,8 @@ void HubConnection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE u
 
                     auto& propObj = root.createNestedObject(key);
                     propObj["value"] = val;
-                    propObj["statusCode"] = (result ? HTTP_CODE_OK : HTTP_CODE_NOT_MODIFIED);
-                    propObj["status"] = (result ? "completed" : "failed");
+                    propObj["statusCode"] = (int) ((result == true) ? HTTP_CODE_OK : HTTP_CODE_NOT_MODIFIED);
+                    propObj["status"] = (const char*) ((result ==true) ? "completed" : "failed");
                     propObj["$version"] = version;
 
                     char buffer[MAX_MESSAGE_SIZE];
