@@ -1,5 +1,5 @@
-#ifndef HUBCONNECTION_H
-#define HUBCONNECTION_H
+#ifndef IOTC_CONNECTION_H
+#define IOTC_CONNECTION_H
 
 #include <string>
 #include <map>
@@ -18,10 +18,10 @@ typedef std::function<std::string(std::string, void *)> MethodCallbackFunctionTy
 typedef std::function<void(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason)> ConnectionStatusCallbackFunctionType;
 typedef std::function<bool(std::string,std::string,void*)> DesiredPropertyCallbackFunctionType;
 
-class HubConnection
+class IoTC_Connection
 {
   public:
-    HubConnection();
+    IoTC_Connection();
 
     bool setup(std::string connectionString);
     void loop();
@@ -62,6 +62,6 @@ class HubConnection
     std::map<std::string, std::pair<DesiredPropertyCallbackFunctionType, void *>> _desiredPropCallbackMap;
 };
 
-#include "HubConnection.hpp"
+#include "IoTC_Connection.hpp"
 
-#endif
+#endif // IOTC_CONNECTION_H

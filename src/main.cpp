@@ -7,7 +7,7 @@
 #include <ESP8266WebServer.h> // Local WebServer used to serve the configuration portal
 #include <ArduinoLog.h>
 
-#include "HubConnection.h"
+#include <IoTC_Connection.h>
 #include "Wifi.h"
 #include "config.h"
 
@@ -24,7 +24,7 @@ static SimpleTimer timer;
 static bool loopActive = false;
 
 // Objectify
-HubConnection hubConnection;
+IoTC_Connection IoTC_Connection;
 
 void InitSerial()
 {
@@ -70,15 +70,15 @@ void SendTelemetry()
     telemetryMap["temp"] = temperature;
     telemetryMap["pressure"] = pressure;
 
-    hubConnection.sendMeasurements(telemetryMap);
+    IoTC_Connection.sendMeasurements(telemetryMap);
 }
 
 void SendReportedProperty_SSID()
 {
-    if (hubConnection.sendReportedProperty("wifi_ap_name", WiFi.SSID().c_str()) == false)
+    if (IoTC_Connection.sendReportedProperty("wifi_ap_name", WiFi.SSID().c_str()) == false)
         Log.error("Failure sending reported property!!!" CR);
     else
-        Log.trace("hubConnection.sendReportedProperty COMPLETED" CR);
+        Log.trace("IoTC_Connection.sendReportedProperty COMPLETED" CR);
 }
 
 #ifdef ENABLE_FREE_HEAP_LOGGING
@@ -97,7 +97,7 @@ void setup()
     InitWifi();
     InitTime();
 
-    if (!hubConnection.setup(iotConnStr))
+    if (!IoTC_Connection.setup(iotConnStr))
     {
         return;
     }
@@ -110,7 +110,7 @@ void setup()
     };
 
     Log.notice("== Enabling Device Method Callback ==" CR);
-    if (hubConnection.registerDeviceMethod("reboot", rebootCallback) == false)
+    if (IoTC_Connection.registerDeviceMethod("reboot", rebootCallback) == false)
     {
         Log.error("Register device method FAILED!" CR);
         return;
@@ -121,9 +121,9 @@ void setup()
     };
 
     Log.notice("== Enabling Connection Status Callback ==" CR);
-    if (hubConnection.registerConnectionStatusCallback(connectionStatusCallback) == false)
+    if (IoTC_Connection.registerConnectionStatusCallback(connectionStatusCallback) == false)
     {
-        Log.error("hubConnection.registerConnectionStatusCallback FAILED!" CR);
+        Log.error("IoTC_Connection.registerConnectionStatusCallback FAILED!" CR);
         return;
     }
 
@@ -133,9 +133,9 @@ void setup()
     };
 
     Log.notice("== Enabling Device Twin Callback ==" CR);
-    if (hubConnection.registerDesiredPropertyCallback("fan-speed", desiredPropCallback) == false)
+    if (IoTC_Connection.registerDesiredPropertyCallback("fan-speed", desiredPropCallback) == false)
     {
-        Log.error("hubConnection.registerDesiredPropertyCallback FAILED!" CR);
+        Log.error("IoTC_Connection.registerDesiredPropertyCallback FAILED!" CR);
         return;
     }
 
@@ -160,7 +160,7 @@ void loop()
     if (loopActive)
     {
         timer.run();
-        hubConnection.loop();
+        IoTC_Connection.loop();
         delay(100);
     }
 }

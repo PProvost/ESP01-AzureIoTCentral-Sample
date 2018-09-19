@@ -1,11 +1,11 @@
-#ifndef HUBCONNECTION_HPP
-#define HUBCONNECTION_HPP
+#ifndef IOTC_CONNECTION_HPP
+#define IOTC_CONNECTION_HPP
 
 // Inline directives for template instantiation
-#include "HubConnection.h"
+#include "IoTC_Connection.h"
 
 template <typename T> 
-bool HubConnection::sendReportedProperty(const std::string key, T value)
+bool IoTC_Connection::sendReportedProperty(const std::string key, T value)
 {
     StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
     JsonObject &root = jsonBuffer.createObject();
@@ -29,4 +29,4 @@ bool HubConnection::sendReportedProperty(const std::string key, T value)
     }
 }
 
-#endif
+#endif // IOTC_CONNECTION_HPP
