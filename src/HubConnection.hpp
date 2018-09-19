@@ -15,10 +15,7 @@ bool HubConnection::sendReportedProperty(const std::string key, T value)
     char message[MAX_MESSAGE_SIZE];
     root.printTo(message);
 
-    IOTHUB_CLIENT_RESULT result = IoTHubClient_LL_SendReportedState(this->_iotHubClientHandle,
-                                                                    (const unsigned char *)message,
-                                                                    strlen(message),
-                                                                    this->internalReportedStateCallback, NULL);
+    auto result = this->internalSendReportedProperty(message, strlen(message));
 
     if (result != IOTHUB_CLIENT_OK)
     {

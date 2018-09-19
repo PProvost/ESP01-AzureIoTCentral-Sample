@@ -127,8 +127,9 @@ void setup()
         return;
     }
 
-    auto desiredPropCallback = [](std::string name, std::string val, void* context){
-        Log.notice("Desired property 'fan-speed' updated: %s" CR, val.c_str());
+    auto desiredPropCallback = [](std::string name, std::string val, void* context)->bool{
+        Log.notice("Desired property '%s' updated: %s" CR, name.c_str(), val.c_str());
+        return true;
     };
 
     Log.notice("== Enabling Device Twin Callback ==" CR);

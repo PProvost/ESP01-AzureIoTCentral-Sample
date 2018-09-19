@@ -16,7 +16,7 @@
 // Callback types
 typedef std::function<std::string(std::string, void *)> MethodCallbackFunctionType;
 typedef std::function<void(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason)> ConnectionStatusCallbackFunctionType;
-typedef std::function<void(std::string,std::string,void*)> DesiredPropertyCallbackFunctionType;
+typedef std::function<bool(std::string,std::string,void*)> DesiredPropertyCallbackFunctionType;
 
 class HubConnection
 {
@@ -44,6 +44,7 @@ class HubConnection
     IOTHUB_CLIENT_LL_HANDLE getHubClientHandle();
 
   protected:
+    IOTHUB_CLIENT_RESULT internalSendReportedProperty(const char* buffer, size_t length);
     static int internalDeviceDirectMethodCallback(const char *method_name, const unsigned char *payload, size_t size, unsigned char **response, size_t *response_size, void *context);
     static void internalTelemetryConfirmationCallback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void *context);
     static void internalConnectionStatusCallback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void *userContextCallback);
