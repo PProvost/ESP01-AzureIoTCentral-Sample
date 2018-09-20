@@ -24,7 +24,7 @@ static SimpleTimer timer;
 static bool loopActive = false;
 
 // Objectify
-IoTC_Connection IoTC_Connection;
+IoTC_Connection ioTC_Connection;
 
 void InitSerial()
 {
@@ -70,12 +70,12 @@ void SendTelemetry()
     telemetryMap["temp"] = temperature;
     telemetryMap["pressure"] = pressure;
 
-    IoTC_Connection.sendMeasurements(telemetryMap);
+    ioTC_Connection.sendMeasurements(telemetryMap);
 }
 
 void SendReportedProperty_SSID()
 {
-    if (IoTC_Connection.sendReportedProperty("wifi_ap_name", WiFi.SSID().c_str()) == false)
+    if (ioTC_Connection.sendReportedProperty("wifi_ap_name", WiFi.SSID().c_str()) == false)
         Log.error("Failure sending reported property!!!" CR);
     else
         Log.trace("IoTC_Connection.sendReportedProperty COMPLETED" CR);
@@ -97,7 +97,7 @@ void setup()
     InitWifi();
     InitTime();
 
-    if (!IoTC_Connection.setup(iotConnStr))
+    if (!ioTC_Connection.setup(iotConnStr))
     {
         return;
     }
@@ -110,7 +110,7 @@ void setup()
     };
 
     Log.notice("== Enabling Device Method Callback ==" CR);
-    if (IoTC_Connection.registerDeviceMethod("reboot", rebootCallback) == false)
+    if (ioTC_Connection.registerDeviceMethod("reboot", rebootCallback) == false)
     {
         Log.error("Register device method FAILED!" CR);
         return;
@@ -121,7 +121,7 @@ void setup()
     };
 
     Log.notice("== Enabling Connection Status Callback ==" CR);
-    if (IoTC_Connection.registerConnectionStatusCallback(connectionStatusCallback) == false)
+    if (ioTC_Connection.registerConnectionStatusCallback(connectionStatusCallback) == false)
     {
         Log.error("IoTC_Connection.registerConnectionStatusCallback FAILED!" CR);
         return;
@@ -133,7 +133,7 @@ void setup()
     };
 
     Log.notice("== Enabling Device Twin Callback ==" CR);
-    if (IoTC_Connection.registerDesiredPropertyCallback("fan-speed", desiredPropCallback) == false)
+    if (ioTC_Connection.registerDesiredPropertyCallback("fan-speed", desiredPropCallback) == false)
     {
         Log.error("IoTC_Connection.registerDesiredPropertyCallback FAILED!" CR);
         return;
@@ -160,7 +160,7 @@ void loop()
     if (loopActive)
     {
         timer.run();
-        IoTC_Connection.loop();
+        ioTC_Connection.loop();
         delay(100);
     }
 }

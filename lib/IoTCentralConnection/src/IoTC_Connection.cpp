@@ -6,6 +6,7 @@
 #include <sdk/iothubtransportmqtt.h>
 #include <sdk/iothub_client_options.h>
 #include <AzureIoTProtocol_MQTT.h>
+
 #include <ArduinoLog.h>
 #include <ArduinoJson.h>
 
@@ -17,10 +18,8 @@
 
 typedef std::map<std::string, std::pair<MethodCallbackFunctionType, void *>> CallbackMapType;
 
-// Ctor - default
 IoTC_Connection::IoTC_Connection() : _iotHubClientHandle(NULL)
 {
-    // memset(this->connectionString, '\0', MAX_LEN_CONN_STR);
 }
 
 IOTHUB_CLIENT_LL_HANDLE IoTC_Connection::getHubClientHandle()
@@ -215,6 +214,8 @@ bool IoTC_Connection::registerConnectionStatusCallback(ConnectionStatusCallbackF
 
 //
 // Internal protected helper methods
+//
+
 IOTHUB_CLIENT_RESULT IoTC_Connection::internalSendReportedProperty(const char *buffer, size_t length)
 {
     Log.trace("internalSendReportedProperty: %s", buffer);
@@ -231,9 +232,9 @@ IOTHUB_CLIENT_RESULT IoTC_Connection::internalSendReportedProperty(const char *b
 void IoTC_Connection::internalConnectionStatusCallback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void *context)
 {
     Log.trace("Connection Status Received: %s - %s" CR, ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS, result), ENUM_TO_STRING(IOTHUB_CLIENT_CONNECTION_STATUS_REASON, reason));
-    IoTC_Connection *IoTC_Connection = static_cast<IoTC_Connection *>(context);
-    if (IoTC_Connection->_connectionStatusCallback)
-        IoTC_Connection->_connectionStatusCallback(result, reason);
+    IoTC_Connection *conn = static_cast<IoTC_Connection *>(context);
+    if (conn->_connectionStatusCallback)
+        conn->_connectionStatusCallback(result, reason);
 }
 
 void IoTC_Connection::internalTelemetryConfirmationCallback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void *context)
@@ -248,9 +249,9 @@ int IoTC_Connection::internalDeviceDirectMethodCallback(const char *method_name,
 {
     Log.trace("**METHOD CALL** - %s" CR, method_name);
 
-    IoTC_Connection *IoTC_Connection = static_cast<IoTC_Connection *>(context);
+    IoTC_Connection *conn = static_cast<IoTC_Connection *>(context);
     std::string method = method_name;
-    CallbackMapType &map = IoTC_Connection->_methodCallbackMap;
+    CallbackMapType &map = conn->_methodCallbackMap;
 
     CallbackMapType::iterator it = map.find(method);
     if (it == map.end()) // key exists, call the user function
@@ -350,7 +351,7 @@ void IoTC_Connection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE
 
     Log.trace("**DESIRED PROP RECEIVED** (%s)" CR, ENUM_TO_STRING(DEVICE_TWIN_UPDATE_STATE, update_state));
 
-    IoTC_Connection *IoTC_Connection = static_cast<IoTC_Connection *>(context);
+    IoTC_Connection *conn = static_cast<IoTC_Connection *>(context);
 
     StaticJsonBuffer<MAX_MESSAGE_SIZE> jsonBuffer;
 
@@ -360,7 +361,7 @@ void IoTC_Connection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE
     root.prettyPrintTo(buffer);
 
     // TODO: Move this to a static function?
-    auto Parse = [IoTC_Connection](const JsonObject &it) {
+    auto Parse = [conn](const JsonObject &it) {
         int version = it["$version"];
         for (const auto &kv : it)
         {
@@ -371,7 +372,7 @@ void IoTC_Connection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE
                 continue; 
 
             auto val = kv.value["value"].as<char *>();
-            auto &map = IoTC_Connection->_desiredPropCallbackMap;
+            auto &map = conn->_desiredPropCallbackMap;
 
             StaticJsonBuffer<MAX_MESSAGE_SIZE> messageJson;
             JsonObject &root = messageJson.createObject();
@@ -400,7 +401,7 @@ void IoTC_Connection::internalDesiredPropertiesCallback(DEVICE_TWIN_UPDATE_STATE
             char buffer[MAX_MESSAGE_SIZE];
             root.printTo(buffer, MAX_MESSAGE_SIZE);
             int length = strlen(buffer);
-            IoTC_Connection->internalSendReportedProperty(buffer, length);
+            conn->internalSendReportedProperty(buffer, length);
         }
     };
 
